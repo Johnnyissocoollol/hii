@@ -1292,7 +1292,7 @@ local titleLbl = Instance.new("TextLabel")
 titleLbl.Size = UDim2.new(1, -80, 1, 0)
 titleLbl.Position = UDim2.new(0, 14, 0, 0)
 titleLbl.BackgroundTransparency = 1
-titleLbl.Text = "MM2 Summer Auto Farm"
+titleLbl.Text = "Murder Mystery 2 Auto Farm Summer Update 🏖️"
 titleLbl.TextColor3 = Color3.fromRGB(200, 200, 205)
 titleLbl.TextSize = 13; titleLbl.Font = Enum.Font.GothamMedium
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left
