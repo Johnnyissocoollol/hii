@@ -1,0 +1,951 @@
+setclipboard = function() end
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local UIPath
+local selectedWeapon = nil
+local selectedWeaponFrame = nil
+local dupeAmount = 2
+local dropdownOpen = false
+local allWeapons = {}
+local currentTab = "Dupe"
+
+local WeaponDB = nil
+local weaponLookup = {}
+local weaponList = {}
+
+local function findUIPath()
+    if LocalPlayer.PlayerGui.MainGUI.Game:FindFirstChild("Inventory") then
+        UIPath = LocalPlayer.PlayerGui.MainGUI.Game.Inventory.Main
+    else
+        UIPath = LocalPlayer.PlayerGui.MainGUI.Lobby.Screens.Inventory.Main
+    end
+end
+
+local function getAllWeapons()
+    local weapons = {}
+    if not UIPath then findUIPath() end
+    
+    pcall(function()
+        for i, v in pairs(UIPath.Weapons.Items.Container:GetChildren()) do
+            for i, v in pairs(v.Container:GetChildren()) do
+                if v.Name == "Christmas" or v.Name == "Halloween" then
+                    for i, v in pairs(v.Container:GetChildren()) do
+                        if v:IsA("Frame") and v.ItemName and v.ItemName.Label then
+                            local weaponName = v.ItemName.Label.Text
+                            if weaponName ~= "Default Knife" and weaponName ~= "Default Gun" and weaponName ~= "" then
+                                table.insert(weapons, {name = weaponName, frame = v})
+                            end
+                        end
+                    end
+                else
+                    if v:IsA("Frame") and v.ItemName and v.ItemName.Label then
+                        local weaponName = v.ItemName.Label.Text
+                        if weaponName ~= "Default Knife" and weaponName ~= "Default Gun" and weaponName ~= "" then
+                            table.insert(weapons, {name = weaponName, frame = v})
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    
+    return weapons
+end
+
+local function dupeSelectedWeapon()
+    if not selectedWeaponFrame then return false end
+    
+    pcall(function()
+        local amount = selectedWeaponFrame.Container.Amount.Text
+        if amount == "" or amount == "None" then
+            selectedWeaponFrame.Container.Amount.Text = "x" .. dupeAmount
+        else
+            local num = tonumber(amount:match("x(%d+)"))
+            if num then
+                selectedWeaponFrame.Container.Amount.Text = "x" .. tostring(num * dupeAmount)
+            else
+                selectedWeaponFrame.Container.Amount.Text = "x" .. dupeAmount
+            end
+        end
+    end)
+    
+    return true
+end
+
+local function dupeAllWeapons()
+    pcall(function()
+        for i, v in pairs(UIPath.Weapons.Items.Container:GetChildren()) do
+            for i, v in pairs(v.Container:GetChildren()) do
+                if v.Name == "Christmas" or v.Name == "Halloween" then
+                    for i, v in pairs(v.Container:GetChildren()) do
+                        if v:IsA("Frame") and v.ItemName and v.ItemName.Label then
+                            if v.ItemName.Label.Text ~= "Default Knife" and v.ItemName.Label.Text ~= "Default Gun" then
+                                local amount = v.Container.Amount.Text
+                                if amount == "" or amount == "None" then
+                                    v.Container.Amount.Text = "x" .. dupeAmount
+                                else
+                                    local num = tonumber(amount:match("x(%d+)"))
+                                    if num then
+                                        v.Container.Amount.Text = "x" .. tostring(num * dupeAmount)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                else
+                    if v:IsA("Frame") and v.ItemName and v.ItemName.Label then
+                        if v.ItemName.Label.Text ~= "Default Knife" and v.ItemName.Label.Text ~= "Default Gun" then
+                            local amount = v.Container.Amount.Text
+                            if amount == "" or amount == "None" then
+                                v.Container.Amount.Text = "x" .. dupeAmount
+                            else
+                                local num = tonumber(amount:match("x(%d+)"))
+                                if num then
+                                    v.Container.Amount.Text = "x" .. tostring(num * dupeAmount)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        for i, v in pairs(UIPath.Pets.Items.Container.Current.Container:GetChildren()) do
+            if v:IsA("Frame") then
+                local amount = v.Container.Amount.Text
+                if amount == "" or amount == "None" then
+                    v.Container.Amount.Text = "x" .. dupeAmount
+                else
+                    local num = tonumber(amount:match("x(%d+)"))
+                    if num then
+                        v.Container.Amount.Text = "x" .. tostring(num * dupeAmount)
+                    end
+                end
+            end
+        end
+    end)
+    return true
+end
+
+local function initWeaponDB()
+    if WeaponDB then return end
+    pcall(function()
+        local Sync = require(ReplicatedStorage:WaitForChild("Database"):WaitForChild("Sync"))
+        WeaponDB = Sync.Weapons
+        if WeaponDB then
+            for key, info in pairs(WeaponDB) do
+                if type(info) == "table" then
+                    local kl = key:lower()
+                    weaponLookup[kl] = weaponLookup[kl] or key
+                    local dn = info.ItemName or info.DisplayName or info.Name
+                    if dn then
+                        dn = tostring(dn):lower()
+                        weaponLookup[dn] = weaponLookup[dn] or key
+                    end
+                    if info.ItemType == "Knife" or info.ItemType == "Gun" then
+                        table.insert(weaponList, {
+                            key = key,
+                            name = info.ItemName or key,
+                            type = info.ItemType,
+                            rarity = info.Rarity or ""
+                        })
+                    end
+                end
+            end
+            table.sort(weaponList, function(a, b)
+                if a.type ~= b.type then return a.type < b.type end
+                if a.rarity ~= b.rarity then return a.rarity < b.rarity end
+                return a.name:lower() < b.name:lower()
+            end)
+        end
+    end)
+end
+
+local function resolveWeaponInput(text)
+    if not text or text == "" then return nil end
+    text = text:gsub("^%s+", ""):gsub("%s+$", "")
+    if text == "" then return nil end
+    if WeaponDB and WeaponDB[text] then return text end
+    return weaponLookup[text:lower()]
+end
+
+local function spawnWeapon(name, amount)
+    amount = amount or 1
+    initWeaponDB()
+    if not WeaponDB then return false end
+    pcall(function()
+        local ProfileData = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("ProfileData"))
+        local InvDataChanged = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Inventory"):WaitForChild("InventoryDataChanged")
+        local owned = ProfileData.Weapons.Owned
+        owned[name] = (owned[name] or 0) + amount
+        InvDataChanged:Fire("Weapons", name, owned[name])
+    end)
+    return true
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "DupeGUI"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local function getCoreGui()
+    local success, result = pcall(function()
+        return game:GetService("CoreGui")
+    end)
+    if success and result then
+        return result
+    end
+    return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+screenGui.Parent = getCoreGui()
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 420, 0, 430)
+mainFrame.Position = UDim2.new(0.5, -210, 0.5, -215)
+mainFrame.BackgroundColor3 = Color3.fromRGB(38, 38, 42)
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = true
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 10)
+mainCorner.Parent = mainFrame
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 34)
+titleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 34)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 10)
+titleCorner.Parent = titleBar
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -80, 1, 0)
+titleLabel.Position = UDim2.new(0, 12, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "TOOL HUB"
+titleLabel.TextColor3 = Color3.fromRGB(220, 220, 230)
+titleLabel.TextSize = 15
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.Parent = titleBar
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 24, 0, 24)
+closeBtn.Position = UDim2.new(1, -30, 0, 5)
+closeBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+closeBtn.TextSize = 12
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.BorderSizePixel = 0
+closeBtn.Parent = titleBar
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 5)
+closeCorner.Parent = closeBtn
+
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.new(0, 24, 0, 24)
+minBtn.Position = UDim2.new(1, -58, 0, 5)
+minBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+minBtn.Text = "-"
+minBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+minBtn.TextSize = 16
+minBtn.Font = Enum.Font.GothamBold
+minBtn.BorderSizePixel = 0
+minBtn.Parent = titleBar
+
+local minCorner = Instance.new("UICorner")
+minCorner.CornerRadius = UDim.new(0, 5)
+minCorner.Parent = minBtn
+
+local divider = Instance.new("Frame")
+divider.Size = UDim2.new(1, 0, 0, 1)
+divider.Position = UDim2.new(0, 0, 0, 34)
+divider.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+divider.BorderSizePixel = 0
+divider.Parent = mainFrame
+
+local bodyFrame = Instance.new("Frame")
+bodyFrame.Size = UDim2.new(1, 0, 1, -34)
+bodyFrame.Position = UDim2.new(0, 0, 0, 35)
+bodyFrame.BackgroundTransparency = 1
+bodyFrame.Parent = mainFrame
+
+local sidebar = Instance.new("Frame")
+sidebar.Size = UDim2.new(0, 90, 1, 0)
+sidebar.BackgroundColor3 = Color3.fromRGB(30, 30, 34)
+sidebar.BorderSizePixel = 0
+sidebar.Parent = bodyFrame
+
+local sidebarDivider = Instance.new("Frame")
+sidebarDivider.Size = UDim2.new(0, 1, 1, 0)
+sidebarDivider.Position = UDim2.new(1, 0, 0, 0)
+sidebarDivider.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+sidebarDivider.BorderSizePixel = 0
+sidebarDivider.Parent = sidebar
+
+local tabDupe = Instance.new("TextButton")
+tabDupe.Size = UDim2.new(1, 0, 0, 38)
+tabDupe.Position = UDim2.new(0, 0, 0, 6)
+tabDupe.BackgroundColor3 = Color3.fromRGB(60, 60, 68)
+tabDupe.Text = "DUPE"
+tabDupe.TextColor3 = Color3.fromRGB(230, 230, 240)
+tabDupe.TextSize = 11
+tabDupe.Font = Enum.Font.GothamBold
+tabDupe.BorderSizePixel = 0
+tabDupe.Parent = sidebar
+
+local tabSpawn = Instance.new("TextButton")
+tabSpawn.Size = UDim2.new(1, 0, 0, 38)
+tabSpawn.Position = UDim2.new(0, 0, 0, 46)
+tabSpawn.BackgroundColor3 = Color3.fromRGB(38, 38, 42)
+tabSpawn.Text = "SPAWN"
+tabSpawn.TextColor3 = Color3.fromRGB(180, 180, 190)
+tabSpawn.TextSize = 11
+tabSpawn.Font = Enum.Font.GothamBold
+tabSpawn.BorderSizePixel = 0
+tabSpawn.Parent = sidebar
+
+local contentArea = Instance.new("Frame")
+contentArea.Size = UDim2.new(1, -90, 1, 0)
+contentArea.Position = UDim2.new(0, 90, 0, 0)
+contentArea.BackgroundTransparency = 1
+contentArea.Parent = bodyFrame
+
+local dupeContent = Instance.new("Frame")
+dupeContent.Size = UDim2.new(1, -16, 1, -12)
+dupeContent.Position = UDim2.new(0, 8, 0, 6)
+dupeContent.BackgroundTransparency = 1
+dupeContent.Parent = contentArea
+
+local dupeLayout = Instance.new("UIListLayout")
+dupeLayout.Padding = UDim.new(0, 6)
+dupeLayout.SortOrder = Enum.SortOrder.LayoutOrder
+dupeLayout.Parent = dupeContent
+
+local noteFrame = Instance.new("Frame")
+noteFrame.Size = UDim2.new(1, 0, 0, 32)
+noteFrame.BackgroundColor3 = Color3.fromRGB(50, 40, 40)
+noteFrame.BorderSizePixel = 0
+noteFrame.Parent = dupeContent
+
+local noteCorner = Instance.new("UICorner")
+noteCorner.CornerRadius = UDim.new(0, 5)
+noteCorner.Parent = noteFrame
+
+local noteLabel = Instance.new("TextLabel")
+noteLabel.Size = UDim2.new(1, -10, 1, 0)
+noteLabel.Position = UDim2.new(0, 6, 0, 0)
+noteLabel.BackgroundTransparency = 1
+noteLabel.Text = "NOTE: You must have the weapon in your inventory"
+noteLabel.TextColor3 = Color3.fromRGB(240, 180, 180)
+noteLabel.TextSize = 10
+noteLabel.Font = Enum.Font.Gotham
+noteLabel.TextWrapped = true
+noteLabel.TextXAlignment = Enum.TextXAlignment.Left
+noteLabel.Parent = noteFrame
+
+local selectionLabel = Instance.new("TextLabel")
+selectionLabel.Size = UDim2.new(1, 0, 0, 12)
+selectionLabel.BackgroundTransparency = 1
+selectionLabel.Text = "SELECTED WEAPON"
+selectionLabel.TextColor3 = Color3.fromRGB(160, 160, 175)
+selectionLabel.TextSize = 9
+selectionLabel.Font = Enum.Font.GothamBold
+selectionLabel.TextXAlignment = Enum.TextXAlignment.Left
+selectionLabel.Parent = dupeContent
+
+local selectionDisplay = Instance.new("Frame")
+selectionDisplay.Size = UDim2.new(1, 0, 0, 32)
+selectionDisplay.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+selectionDisplay.BorderSizePixel = 0
+selectionDisplay.Parent = dupeContent
+
+local selectionCorner = Instance.new("UICorner")
+selectionCorner.CornerRadius = UDim.new(0, 5)
+selectionCorner.Parent = selectionDisplay
+
+local selectionText = Instance.new("TextLabel")
+selectionText.Size = UDim2.new(1, -12, 1, 0)
+selectionText.Position = UDim2.new(0, 6, 0, 0)
+selectionText.BackgroundTransparency = 1
+selectionText.Text = "None"
+selectionText.TextColor3 = Color3.fromRGB(220, 220, 230)
+selectionText.TextSize = 12
+selectionText.Font = Enum.Font.GothamBold
+selectionText.TextXAlignment = Enum.TextXAlignment.Left
+selectionText.Parent = selectionDisplay
+
+local dropdownBtn = Instance.new("TextButton")
+dropdownBtn.Size = UDim2.new(1, 0, 0, 30)
+dropdownBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+dropdownBtn.Text = "SELECT WEAPON"
+dropdownBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+dropdownBtn.TextSize = 10
+dropdownBtn.Font = Enum.Font.GothamMedium
+dropdownBtn.BorderSizePixel = 0
+dropdownBtn.Parent = dupeContent
+
+local dropdownCorner = Instance.new("UICorner")
+dropdownCorner.CornerRadius = UDim.new(0, 5)
+dropdownCorner.Parent = dropdownBtn
+
+local dropdownArrow = Instance.new("TextLabel")
+dropdownArrow.Size = UDim2.new(0, 20, 1, 0)
+dropdownArrow.Position = UDim2.new(1, -24, 0, 0)
+dropdownArrow.BackgroundTransparency = 1
+dropdownArrow.Text = "▼"
+dropdownArrow.TextColor3 = Color3.fromRGB(140, 140, 155)
+dropdownArrow.TextSize = 10
+dropdownArrow.Font = Enum.Font.Gotham
+dropdownArrow.Parent = dropdownBtn
+
+local dropdownFrame = Instance.new("Frame")
+dropdownFrame.Size = UDim2.new(1, 0, 0, 0)
+dropdownFrame.Position = UDim2.new(0, 0, 0, 34)
+dropdownFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+dropdownFrame.BorderSizePixel = 0
+dropdownFrame.Visible = false
+dropdownFrame.ClipsDescendants = true
+dropdownFrame.Parent = dupeContent
+
+local dropdownCorner2 = Instance.new("UICorner")
+dropdownCorner2.CornerRadius = UDim.new(0, 5)
+dropdownCorner2.Parent = dropdownFrame
+
+local dropdownStroke = Instance.new("UIStroke")
+dropdownStroke.Color = Color3.fromRGB(55, 55, 62)
+dropdownStroke.Thickness = 1
+dropdownStroke.Parent = dropdownFrame
+
+local searchBox = Instance.new("TextBox")
+searchBox.Size = UDim2.new(1, -8, 0, 24)
+searchBox.Position = UDim2.new(0, 4, 0, 4)
+searchBox.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+searchBox.PlaceholderText = "Search..."
+searchBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 135)
+searchBox.Text = ""
+searchBox.TextColor3 = Color3.fromRGB(220, 220, 230)
+searchBox.TextSize = 10
+searchBox.Font = Enum.Font.Gotham
+searchBox.BorderSizePixel = 0
+searchBox.ClearTextOnFocus = false
+searchBox.Parent = dropdownFrame
+
+local searchCorner = Instance.new("UICorner")
+searchCorner.CornerRadius = UDim.new(0, 4)
+searchCorner.Parent = searchBox
+
+local dropdownScroll = Instance.new("ScrollingFrame")
+dropdownScroll.Size = UDim2.new(1, -4, 1, -34)
+dropdownScroll.Position = UDim2.new(0, 2, 0, 32)
+dropdownScroll.BackgroundTransparency = 1
+dropdownScroll.ScrollBarThickness = 3
+dropdownScroll.ScrollBarImageColor3 = Color3.fromRGB(70, 70, 80)
+dropdownScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+dropdownScroll.Parent = dropdownFrame
+
+local dropdownLayout = Instance.new("UIListLayout")
+dropdownLayout.Padding = UDim.new(0, 2)
+dropdownLayout.SortOrder = Enum.SortOrder.LayoutOrder
+dropdownLayout.Parent = dropdownScroll
+
+local amountLabel = Instance.new("TextLabel")
+amountLabel.Size = UDim2.new(1, 0, 0, 12)
+amountLabel.BackgroundTransparency = 1
+amountLabel.Text = "MULTIPLIER"
+amountLabel.TextColor3 = Color3.fromRGB(160, 160, 175)
+amountLabel.TextSize = 9
+amountLabel.Font = Enum.Font.GothamBold
+amountLabel.TextXAlignment = Enum.TextXAlignment.Left
+amountLabel.Parent = dupeContent
+
+local amountFrame = Instance.new("Frame")
+amountFrame.Size = UDim2.new(1, 0, 0, 28)
+amountFrame.BackgroundTransparency = 1
+amountFrame.Parent = dupeContent
+
+local amtButtons = {}
+local amtValues = {2, 5, 10, 50}
+for i, val in ipairs(amtValues) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.18, -2, 1, 0)
+    btn.Position = UDim2.new((i-1) * 0.2 + 0.01, 0, 0, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+    btn.Text = "x" .. val
+    btn.TextColor3 = Color3.fromRGB(200, 200, 210)
+    btn.TextSize = 11
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 0
+    btn.Parent = amountFrame
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 4)
+    corner.Parent = btn
+    
+    btn.MouseButton1Click:Connect(function()
+        dupeAmount = val
+        for _, b in pairs(amtButtons) do
+            b.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+        end
+        btn.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
+        customAmountBox.Text = ""
+    end)
+    
+    table.insert(amtButtons, btn)
+end
+amtButtons[1].BackgroundColor3 = Color3.fromRGB(80, 80, 90)
+
+local customAmountBox = Instance.new("TextBox")
+customAmountBox.Size = UDim2.new(0.2, -2, 1, 0)
+customAmountBox.Position = UDim2.new(0.8, 0, 0, 0)
+customAmountBox.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+customAmountBox.PlaceholderText = "Custom"
+customAmountBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 135)
+customAmountBox.Text = ""
+customAmountBox.TextColor3 = Color3.fromRGB(220, 220, 230)
+customAmountBox.TextSize = 11
+customAmountBox.Font = Enum.Font.Gotham
+customAmountBox.BorderSizePixel = 0
+customAmountBox.ClearTextOnFocus = false
+customAmountBox.Parent = amountFrame
+
+local customCorner = Instance.new("UICorner")
+customCorner.CornerRadius = UDim.new(0, 4)
+customCorner.Parent = customAmountBox
+
+customAmountBox.FocusLost:Connect(function()
+    local num = tonumber(customAmountBox.Text)
+    if num and num > 0 then
+        dupeAmount = num
+        for _, b in pairs(amtButtons) do
+            b.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+        end
+    else
+        customAmountBox.Text = ""
+    end
+end)
+
+customAmountBox:GetPropertyChangedSignal("Text"):Connect(function()
+    if customAmountBox.Text == "" then
+        for _, b in pairs(amtButtons) do
+            if tonumber(b.Text:match("x(%d+)")) == dupeAmount then
+                b.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
+            end
+        end
+    end
+end)
+
+local dupeSelectedBtn = Instance.new("TextButton")
+dupeSelectedBtn.Size = UDim2.new(1, 0, 0, 32)
+dupeSelectedBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 68)
+dupeSelectedBtn.Text = "DUPE SELECTED"
+dupeSelectedBtn.TextColor3 = Color3.fromRGB(230, 230, 240)
+dupeSelectedBtn.TextSize = 11
+dupeSelectedBtn.Font = Enum.Font.GothamBold
+dupeSelectedBtn.BorderSizePixel = 0
+dupeSelectedBtn.Parent = dupeContent
+
+local dupeSelectedCorner = Instance.new("UICorner")
+dupeSelectedCorner.CornerRadius = UDim.new(0, 5)
+dupeSelectedCorner.Parent = dupeSelectedBtn
+
+local dupeAllBtn = Instance.new("TextButton")
+dupeAllBtn.Size = UDim2.new(1, 0, 0, 28)
+dupeAllBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+dupeAllBtn.Text = "DUPE ALL WEAPONS"
+dupeAllBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+dupeAllBtn.TextSize = 10
+dupeAllBtn.Font = Enum.Font.GothamBold
+dupeAllBtn.BorderSizePixel = 0
+dupeAllBtn.Parent = dupeContent
+
+local dupeAllCorner = Instance.new("UICorner")
+dupeAllCorner.CornerRadius = UDim.new(0, 5)
+dupeAllCorner.Parent = dupeAllBtn
+
+local statusBar = Instance.new("Frame")
+statusBar.Size = UDim2.new(1, 0, 0, 22)
+statusBar.BackgroundColor3 = Color3.fromRGB(30, 30, 34)
+statusBar.BorderSizePixel = 0
+statusBar.Parent = dupeContent
+
+local statusCorner = Instance.new("UICorner")
+statusCorner.CornerRadius = UDim.new(0, 5)
+statusCorner.Parent = statusBar
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, -10, 1, 0)
+statusLabel.Position = UDim2.new(0, 6, 0, 0)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Ready"
+statusLabel.TextColor3 = Color3.fromRGB(160, 200, 160)
+statusLabel.TextSize = 10
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.Parent = statusBar
+
+local spawnContent = Instance.new("Frame")
+spawnContent.Size = UDim2.new(1, -16, 1, -12)
+spawnContent.Position = UDim2.new(0, 8, 0, 6)
+spawnContent.BackgroundTransparency = 1
+spawnContent.Visible = false
+spawnContent.Parent = contentArea
+
+local spawnLayout = Instance.new("UIListLayout")
+spawnLayout.Padding = UDim.new(0, 8)
+spawnLayout.SortOrder = Enum.SortOrder.LayoutOrder
+spawnLayout.Parent = spawnContent
+
+local spawnTitle = Instance.new("TextLabel")
+spawnTitle.Size = UDim2.new(1, 0, 0, 20)
+spawnTitle.BackgroundTransparency = 1
+spawnTitle.Text = "WEAPON SPAWNER"
+spawnTitle.TextColor3 = Color3.fromRGB(200, 200, 215)
+spawnTitle.TextSize = 14
+spawnTitle.Font = Enum.Font.GothamBold
+spawnTitle.TextXAlignment = Enum.TextXAlignment.Left
+spawnTitle.Parent = spawnContent
+
+local spawnInputLabel = Instance.new("TextLabel")
+spawnInputLabel.Size = UDim2.new(1, 0, 0, 14)
+spawnInputLabel.BackgroundTransparency = 1
+spawnInputLabel.Text = "WEAPON NAME"
+spawnInputLabel.TextColor3 = Color3.fromRGB(160, 160, 175)
+spawnInputLabel.TextSize = 9
+spawnInputLabel.Font = Enum.Font.GothamBold
+spawnInputLabel.TextXAlignment = Enum.TextXAlignment.Left
+spawnInputLabel.Parent = spawnContent
+
+local spawnInputBox = Instance.new("TextBox")
+spawnInputBox.Size = UDim2.new(1, 0, 0, 32)
+spawnInputBox.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+spawnInputBox.PlaceholderText = "Type weapon name..."
+spawnInputBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 135)
+spawnInputBox.Text = ""
+spawnInputBox.TextColor3 = Color3.fromRGB(220, 220, 230)
+spawnInputBox.TextSize = 12
+spawnInputBox.Font = Enum.Font.Gotham
+spawnInputBox.BorderSizePixel = 0
+spawnInputBox.ClearTextOnFocus = false
+spawnInputBox.Parent = spawnContent
+
+local spawnInputCorner = Instance.new("UICorner")
+spawnInputCorner.CornerRadius = UDim.new(0, 5)
+spawnInputCorner.Parent = spawnInputBox
+
+local spawnAmountLabel = Instance.new("TextLabel")
+spawnAmountLabel.Size = UDim2.new(1, 0, 0, 14)
+spawnAmountLabel.BackgroundTransparency = 1
+spawnAmountLabel.Text = "AMOUNT"
+spawnAmountLabel.TextColor3 = Color3.fromRGB(160, 160, 175)
+spawnAmountLabel.TextSize = 9
+spawnAmountLabel.Font = Enum.Font.GothamBold
+spawnAmountLabel.TextXAlignment = Enum.TextXAlignment.Left
+spawnAmountLabel.Parent = spawnContent
+
+local spawnAmountFrame = Instance.new("Frame")
+spawnAmountFrame.Size = UDim2.new(1, 0, 0, 28)
+spawnAmountFrame.BackgroundTransparency = 1
+spawnAmountFrame.Parent = spawnContent
+
+local spawnAmtButtons = {}
+local spawnAmtValues = {1, 5, 10, 50}
+local spawnAmount = 1
+for i, val in ipairs(spawnAmtValues) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.22, -3, 1, 0)
+    btn.Position = UDim2.new((i-1) * 0.25 + 0.012, 0, 0, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+    btn.Text = "x" .. val
+    btn.TextColor3 = Color3.fromRGB(200, 200, 210)
+    btn.TextSize = 11
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 0
+    btn.Parent = spawnAmountFrame
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 4)
+    corner.Parent = btn
+    
+    btn.MouseButton1Click:Connect(function()
+        spawnAmount = val
+        for _, b in pairs(spawnAmtButtons) do
+            b.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+        end
+        btn.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
+    end)
+    
+    table.insert(spawnAmtButtons, btn)
+end
+spawnAmtButtons[1].BackgroundColor3 = Color3.fromRGB(80, 80, 90)
+
+local spawnBtn = Instance.new("TextButton")
+spawnBtn.Size = UDim2.new(1, 0, 0, 36)
+spawnBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 68)
+spawnBtn.Text = "SPAWN WEAPON"
+spawnBtn.TextColor3 = Color3.fromRGB(230, 230, 240)
+spawnBtn.TextSize = 12
+spawnBtn.Font = Enum.Font.GothamBold
+spawnBtn.BorderSizePixel = 0
+spawnBtn.Parent = spawnContent
+
+local spawnBtnCorner = Instance.new("UICorner")
+spawnBtnCorner.CornerRadius = UDim.new(0, 5)
+spawnBtnCorner.Parent = spawnBtn
+
+local spawnStatusBar = Instance.new("Frame")
+spawnStatusBar.Size = UDim2.new(1, 0, 0, 22)
+spawnStatusBar.BackgroundColor3 = Color3.fromRGB(30, 30, 34)
+spawnStatusBar.BorderSizePixel = 0
+spawnStatusBar.Parent = spawnContent
+
+local spawnStatusCorner = Instance.new("UICorner")
+spawnStatusCorner.CornerRadius = UDim.new(0, 5)
+spawnStatusCorner.Parent = spawnStatusBar
+
+local spawnStatusLabel = Instance.new("TextLabel")
+spawnStatusLabel.Size = UDim2.new(1, -10, 1, 0)
+spawnStatusLabel.Position = UDim2.new(0, 6, 0, 0)
+spawnStatusLabel.BackgroundTransparency = 1
+spawnStatusLabel.Text = "Enter a weapon name"
+spawnStatusLabel.TextColor3 = Color3.fromRGB(160, 160, 175)
+spawnStatusLabel.TextSize = 10
+spawnStatusLabel.Font = Enum.Font.Gotham
+spawnStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+spawnStatusLabel.Parent = spawnStatusBar
+
+local function updateSpawnStatus(text, isError)
+    spawnStatusLabel.Text = text
+    spawnStatusLabel.TextColor3 = isError and Color3.fromRGB(210, 130, 130) or Color3.fromRGB(160, 200, 160)
+end
+
+local function doSpawnWeapon()
+    local name = spawnInputBox.Text
+    if not name or name == "" then
+        updateSpawnStatus("Enter a weapon name", true)
+        return
+    end
+    
+    initWeaponDB()
+    local key = resolveWeaponInput(name)
+    if not key then
+        updateSpawnStatus("Unknown weapon: " .. name, true)
+        return
+    end
+    
+    local success = spawnWeapon(key, spawnAmount)
+    if success then
+        updateSpawnStatus("Spawned " .. key .. " x" .. spawnAmount)
+        spawnInputBox.Text = ""
+    else
+        updateSpawnStatus("Failed to spawn weapon", true)
+    end
+end
+
+spawnBtn.MouseButton1Click:Connect(doSpawnWeapon)
+spawnInputBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then doSpawnWeapon() end
+end)
+
+local function updateStatus(text, isError)
+    statusLabel.Text = text
+    statusLabel.TextColor3 = isError and Color3.fromRGB(210, 130, 130) or Color3.fromRGB(160, 200, 160)
+end
+
+local function updateDropdownList(filter)
+    for _, child in pairs(dropdownScroll:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end    end
+    
+    if #allWeapons == 0 then
+        local emptyLabel = Instance.new("TextLabel")
+        emptyLabel.Size = UDim2.new(1, 0, 0, 24)
+        emptyLabel.BackgroundTransparency = 1
+        emptyLabel.Text = "Loading..."
+        emptyLabel.TextColor3 = Color3.fromRGB(140, 140, 155)
+        emptyLabel.TextSize = 10
+        emptyLabel.Font = Enum.Font.Gotham
+        emptyLabel.Parent = dropdownScroll
+        return
+    end
+    
+    local filteredWeapons = allWeapons
+    if filter and filter ~= "" then
+        filteredWeapons = {}
+        for _, weapon in pairs(allWeapons) do
+            if string.find(string.lower(weapon.name), string.lower(filter)) then
+                table.insert(filteredWeapons, weapon)
+            end
+        end
+    end
+    
+    if #filteredWeapons == 0 then
+        local emptyLabel = Instance.new("TextLabel")
+        emptyLabel.Size = UDim2.new(1, 0, 0, 24)
+        emptyLabel.BackgroundTransparency = 1
+        emptyLabel.Text = "No matches"
+        emptyLabel.TextColor3 = Color3.fromRGB(140, 140, 155)
+        emptyLabel.TextSize = 10
+        emptyLabel.Font = Enum.Font.Gotham
+        emptyLabel.Parent = dropdownScroll
+    else
+        for _, weapon in pairs(filteredWeapons) do
+            local weaponBtn = Instance.new("TextButton")
+            weaponBtn.Size = UDim2.new(1, -4, 0, 24)
+            weaponBtn.BackgroundColor3 = Color3.fromRGB(42, 42, 48)
+            weaponBtn.Text = weapon.name
+            weaponBtn.TextColor3 = Color3.fromRGB(210, 210, 220)
+            weaponBtn.TextSize = 10
+            weaponBtn.Font = Enum.Font.Gotham
+            weaponBtn.TextXAlignment = Enum.TextXAlignment.Left
+            weaponBtn.BorderSizePixel = 0
+            weaponBtn.Parent = dropdownScroll
+            
+            local padding = Instance.new("UIPadding")
+            padding.PaddingLeft = UDim.new(0, 6)
+            padding.Parent = weaponBtn
+            
+            local btnCorner = Instance.new("UICorner")
+            btnCorner.CornerRadius = UDim.new(0, 3)
+            btnCorner.Parent = weaponBtn
+            
+            weaponBtn.MouseButton1Click:Connect(function()
+                selectedWeapon = weapon.name
+                selectedWeaponFrame = weapon.frame
+                selectionText.Text = selectedWeapon
+                dropdownFrame.Visible = false
+                dropdownOpen = false
+                searchBox.Text = ""
+                dropdownFrame.Size = UDim2.new(1, 0, 0, 0)
+                updateStatus("Selected: " .. selectedWeapon)
+            end)
+        end
+    end
+    
+    task.wait()
+    dropdownScroll.CanvasSize = UDim2.new(0, 0, 0, dropdownLayout.AbsoluteContentSize.Y + 4)
+end
+
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    if dropdownOpen then
+        updateDropdownList(searchBox.Text)
+    end
+end)
+
+local function refreshWeaponList()
+    findUIPath()
+    allWeapons = getAllWeapons()
+    if dropdownOpen then
+        updateDropdownList(searchBox.Text)
+    end
+end
+
+dropdownBtn.MouseButton1Click:Connect(function()
+    if not dropdownOpen then
+        refreshWeaponList()
+        dropdownFrame.Visible = true
+        dropdownOpen = true
+        updateDropdownList("")
+        dropdownScroll.CanvasPosition = Vector2.new(0, 0)
+        dropdownFrame.Size = UDim2.new(1, 0, 0, 150)
+    else
+        dropdownFrame.Size = UDim2.new(1, 0, 0, 0)
+        task.wait(0.1)
+        dropdownFrame.Visible = false
+        dropdownOpen = false
+        searchBox.Text = ""
+    end
+end)
+
+dupeSelectedBtn.MouseButton1Click:Connect(function()
+    if not selectedWeaponFrame then
+        updateStatus("Select a weapon first", true)
+        return
+    end
+    dupeSelectedWeapon()
+    updateStatus("Duped " .. selectedWeapon .. " x" .. dupeAmount)
+end)
+
+dupeAllBtn.MouseButton1Click:Connect(function()
+    dupeAllWeapons()
+    updateStatus("Duped all weapons x" .. dupeAmount)
+end)
+
+tabDupe.MouseButton1Click:Connect(function()
+    currentTab = "Dupe"
+    dupeContent.Visible = true
+    spawnContent.Visible = false
+    tabDupe.BackgroundColor3 = Color3.fromRGB(60, 60, 68)
+    tabDupe.TextColor3 = Color3.fromRGB(230, 230, 240)
+    tabSpawn.BackgroundColor3 = Color3.fromRGB(38, 38, 42)
+    tabSpawn.TextColor3 = Color3.fromRGB(180, 180, 190)
+end)
+
+tabSpawn.MouseButton1Click:Connect(function()
+    currentTab = "Spawn"
+    dupeContent.Visible = false
+    spawnContent.Visible = true
+    tabSpawn.BackgroundColor3 = Color3.fromRGB(60, 60, 68)
+    tabSpawn.TextColor3 = Color3.fromRGB(230, 230, 240)
+    tabDupe.BackgroundColor3 = Color3.fromRGB(38, 38, 42)
+    tabDupe.TextColor3 = Color3.fromRGB(180, 180, 190)
+    initWeaponDB()
+    updateSpawnStatus("Type a weapon name to spawn")
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
+
+local minimized = false
+minBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    if minimized then
+        mainFrame.Size = UDim2.new(0, 420, 0, 34)
+        bodyFrame.Visible = false
+        minBtn.Text = "+"
+    else
+        mainFrame.Size = UDim2.new(0, 420, 0, 430)
+        bodyFrame.Visible = true
+        minBtn.Text = "-"
+    end
+end)
+
+local dragging = false
+local dragStart, startPos
+
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+refreshWeaponList()
+updateStatus("Ready")
+initWeaponDB()
